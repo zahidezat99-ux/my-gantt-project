@@ -1,0 +1,46 @@
+name: Validate & Auto-Fix SVG Usernames
+
+on:
+  push:
+    paths:
+      - '**/*.svg'
+  pull_request:
+    paths:
+      - '**/*.svg'
+
+jobs:
+  svg-username-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install --quiet pathlib
+
+      - name: Run username auto-fix script
+        run: python3 fix_svg_usernames_bulk_buffers.py
+
+      - name: Fail if unresolved usernames remain
+        if: always()
+        run: |
+          git diff --name-only HEAD~1 HEAD | grep '\.svg$' | xargs -I{} grep -o '@[^\"\'\`[:space:]]\+' {} | sort -u
+          # The script already exits with 1 if unresolved, so this is extra logging
+
+      - name: Commit cleaned SVGs (optional)
+        if: success() && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add *.svg
+          if ! git diff --cached --quiet; then
+            git commit -m "🛠️ Auto-fix SVG @usernames"
+            git push
+          else
+            echo "No SVG changes to commit."
